@@ -7,7 +7,7 @@ const OPENCLAW_EVENTS = new Set([
   "subscription.scheduled_cancel",
 ]);
 
-async function forwardToOpenClaw(eventType: string, event: unknown) {
+function forwardToOpenClaw(eventType: string, event: unknown) {
   const host = process.env.OPENCLAW_HOST;
   const token = process.env.OPENCLAW_TOKEN;
 
@@ -16,24 +16,29 @@ async function forwardToOpenClaw(eventType: string, event: unknown) {
     return;
   }
 
-  try {
-    const res = await fetch(`${host}/hooks/agent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ eventType, event }),
-    });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
 
-    if (!res.ok) {
-      console.error(`[openclaw] forward failed: ${res.status} ${res.statusText}`);
-    } else {
-      console.log(`[openclaw] forwarded ${eventType}`);
-    }
-  } catch (err) {
-    console.error("[openclaw] forward error:", err);
-  }
+  fetch(`${host}/hooks/agent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ eventType, event }),
+    signal: controller.signal,
+  })
+    .then((res) => {
+      if (!res.ok) {
+        console.error(`[openclaw] forward failed: ${res.status} ${res.statusText}`);
+      } else {
+        console.log(`[openclaw] forwarded ${eventType}`);
+      }
+    })
+    .catch((err) => {
+      console.error("[openclaw] forward error:", err);
+    })
+    .finally(() => clearTimeout(timeout));
 }
 
 export async function POST(request: Request) {
@@ -182,7 +187,7 @@ export async function POST(request: Request) {
   }
 
   if (OPENCLAW_EVENTS.has(event.eventType)) {
-    await forwardToOpenClaw(event.eventType, event);
+    forwardToOpenClaw(event.eventType, event);
   }
 
   return Response.json({ received: true });
