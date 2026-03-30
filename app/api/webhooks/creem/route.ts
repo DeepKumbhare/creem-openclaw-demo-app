@@ -1,5 +1,41 @@
 import crypto from "crypto";
 
+const OPENCLAW_EVENTS = new Set([
+  "checkout.completed",
+  "subscription.past_due",
+  "subscription.canceled",
+  "subscription.scheduled_cancel",
+]);
+
+async function forwardToOpenClaw(eventType: string, event: unknown) {
+  const host = process.env.OPENCLAW_HOST;
+  const token = process.env.OPENCLAW_TOKEN;
+
+  if (!host || !token) {
+    console.warn("[openclaw] OPENCLAW_HOST or OPENCLAW_TOKEN not set, skipping forward");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${host}/hooks/agent`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ eventType, event }),
+    });
+
+    if (!res.ok) {
+      console.error(`[openclaw] forward failed: ${res.status} ${res.statusText}`);
+    } else {
+      console.log(`[openclaw] forwarded ${eventType}`);
+    }
+  } catch (err) {
+    console.error("[openclaw] forward error:", err);
+  }
+}
+
 export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get("creem-signature");
@@ -143,6 +179,10 @@ export async function POST(request: Request) {
 
     default:
       console.warn("[creem] unhandled event type:", event.eventType, event);
+  }
+
+  if (OPENCLAW_EVENTS.has(event.eventType)) {
+    await forwardToOpenClaw(event.eventType, event);
   }
 
   return Response.json({ received: true });
