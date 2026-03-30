@@ -1,43 +1,79 @@
 import crypto from "crypto";
 
-const OPENCLAW_EVENTS = new Set([
+const TELEGRAM_EVENTS = new Set([
   "checkout.completed",
   "subscription.past_due",
   "subscription.canceled",
   "subscription.scheduled_cancel",
 ]);
 
-function forwardToOpenClaw(eventType: string, event: unknown) {
-  const host = process.env.OPENCLAW_HOST;
-  const token = process.env.OPENCLAW_TOKEN;
+function buildTelegramMessage(eventType: string, event: { object?: { id?: string; customer?: { id?: string; email?: string }; product?: { id?: string; name?: string }; order?: { type?: string }; currentPeriodEnd?: number } }): string {
+  const obj = event.object ?? {};
+  const customer = obj.customer?.email ?? obj.customer?.id ?? "unknown";
 
-  if (!host || !token) {
-    console.warn("[openclaw] OPENCLAW_HOST or OPENCLAW_TOKEN not set, skipping forward");
+  switch (eventType) {
+    case "checkout.completed":
+      return [
+        "💰 *New Payment*",
+        `Customer: ${customer}`,
+        `Product: ${obj.product?.name ?? obj.product?.id ?? "unknown"}`,
+        `Type: ${obj.order?.type ?? "unknown"}`,
+      ].join("\n");
+
+    case "subscription.past_due":
+      return [
+        "⚠️ *Payment Failed*",
+        `Customer: ${customer}`,
+        `Subscription: ${obj.id ?? "unknown"}`,
+      ].join("\n");
+
+    case "subscription.canceled":
+      return [
+        "❌ *Subscription Canceled*",
+        `Customer: ${customer}`,
+        `Subscription: ${obj.id ?? "unknown"}`,
+      ].join("\n");
+
+    case "subscription.scheduled_cancel":
+      return [
+        "🕐 *Cancellation Scheduled*",
+        `Customer: ${customer}`,
+        `Subscription: ${obj.id ?? "unknown"}`,
+        `Ends: ${obj.currentPeriodEnd ? new Date(obj.currentPeriodEnd * 1000).toUTCString() : "unknown"}`,
+      ].join("\n");
+
+    default:
+      return `📌 *${eventType}*`;
+  }
+}
+
+function sendTelegramMessage(eventType: string, event: Parameters<typeof buildTelegramMessage>[1]) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+
+  if (!botToken || !chatId) {
+    console.warn("[telegram] TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set, skipping");
     return;
   }
 
+  const text = buildTelegramMessage(eventType, event);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
 
-  fetch(`${host}/hooks/agent`, {
+  fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ eventType, event }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
     signal: controller.signal,
   })
     .then((res) => {
       if (!res.ok) {
-        console.error(`[openclaw] forward failed: ${res.status} ${res.statusText}`);
+        console.error(`[telegram] send failed: ${res.status} ${res.statusText}`);
       } else {
-        console.log(`[openclaw] forwarded ${eventType}`);
+        console.log(`[telegram] sent message for ${eventType}`);
       }
     })
-    .catch((err) => {
-      console.error("[openclaw] forward error:", err);
-    })
+    .catch((err) => console.error("[telegram] send error:", err))
     .finally(() => clearTimeout(timeout));
 }
 
@@ -186,8 +222,8 @@ export async function POST(request: Request) {
       console.warn("[creem] unhandled event type:", event.eventType, event);
   }
 
-  if (OPENCLAW_EVENTS.has(event.eventType)) {
-    forwardToOpenClaw(event.eventType, event);
+  if (TELEGRAM_EVENTS.has(event.eventType)) {
+    sendTelegramMessage(event.eventType, event);
   }
 
   return Response.json({ received: true });
