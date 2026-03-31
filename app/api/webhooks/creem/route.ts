@@ -16,7 +16,7 @@ function buildMessage(
       customer?: { id?: string; email?: string };
       product?: { id?: string; name?: string };
       order?: { type?: string };
-      currentPeriodEnd?: number;
+      current_period_end_date?: string;
     };
   },
 ): string {
@@ -42,7 +42,7 @@ function buildMessage(
 
     case "subscription.canceled":
       return [
-        "❌ <b>Subscription Canceled</b>",
+        "❌ <b>Churn Risk: Subscription Canceled</b>",
         `Customer: ${customer}`,
         `Product: ${obj.product?.name ?? obj.product?.id ?? "unknown"}`,
         `Subscription: ${obj.id ?? "unknown"}`,
@@ -50,16 +50,16 @@ function buildMessage(
 
     case "subscription.scheduled_cancel":
       return [
-        "🕐 <b>Cancellation Scheduled</b>",
+        "🕐 <b>Churn Risk: Cancellation Scheduled</b>",
         `Customer: ${customer}`,
         `Product: ${obj.product?.name ?? obj.product?.id ?? "unknown"}`,
         `Subscription: ${obj.id ?? "unknown"}`,
-        `Ends: ${obj.currentPeriodEnd ? new Date(obj.currentPeriodEnd * 1000).toUTCString() : "unknown"}`,
+        `Ends: ${obj.current_period_end_date ?? "unknown"}`,
       ].join("\n");
 
     case "subscription.expired":
       return [
-        "⏰ <b>Subscription Expired</b>",
+        "⏰ <b>Churn Confirmed: Subscription Expired</b>",
         `Customer: ${customer}`,
         `Product: ${obj.product?.name ?? obj.product?.id ?? "unknown"}`,
         `Subscription: ${obj.id ?? "unknown"}`,
@@ -202,7 +202,7 @@ export async function POST(request: Request) {
         {
           subscriptionId: event.object.id,
           customerId: event.object.customer?.id,
-          currentPeriodEnd: event.object.currentPeriodEnd,
+          currentPeriodEnd: event.object.current_period_end_date,
         },
       );
       break;
