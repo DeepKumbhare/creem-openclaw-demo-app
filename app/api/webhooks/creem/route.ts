@@ -5,6 +5,7 @@ const TELEGRAM_EVENTS = new Set([
   "subscription.past_due",
   "subscription.canceled",
   "subscription.scheduled_cancel",
+  "subscription.expired",
 ]);
 
 function buildMessage(
@@ -35,6 +36,7 @@ function buildMessage(
       return [
         "⚠️ <b>Payment Failed</b>",
         `Customer: ${customer}`,
+        `Product: ${obj.product?.name ?? obj.product?.id ?? "unknown"}`,
         `Subscription: ${obj.id ?? "unknown"}`,
       ].join("\n");
 
@@ -42,6 +44,7 @@ function buildMessage(
       return [
         "❌ <b>Subscription Canceled</b>",
         `Customer: ${customer}`,
+        `Product: ${obj.product?.name ?? obj.product?.id ?? "unknown"}`,
         `Subscription: ${obj.id ?? "unknown"}`,
       ].join("\n");
 
@@ -49,8 +52,17 @@ function buildMessage(
       return [
         "🕐 <b>Cancellation Scheduled</b>",
         `Customer: ${customer}`,
+        `Product: ${obj.product?.name ?? obj.product?.id ?? "unknown"}`,
         `Subscription: ${obj.id ?? "unknown"}`,
         `Ends: ${obj.currentPeriodEnd ? new Date(obj.currentPeriodEnd * 1000).toUTCString() : "unknown"}`,
+      ].join("\n");
+
+    case "subscription.expired":
+      return [
+        "⏰ <b>Subscription Expired</b>",
+        `Customer: ${customer}`,
+        `Product: ${obj.product?.name ?? obj.product?.id ?? "unknown"}`,
+        `Subscription: ${obj.id ?? "unknown"}`,
       ].join("\n");
 
     default:
